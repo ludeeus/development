@@ -1,107 +1,80 @@
+MAKEFLAGS += --no-print-directory
 .DEFAULT_GOAL := help
 
-.PHONY: help
-help: ## Shows this message.
-	@echo "Development environment for HACS"
-	@echo
-	@echo "Integration: "
-	@printf "\033[36m  make %-30s\033[0m %s\n" "integration-init" "Initialize the integration repository"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "integration-start" "Start the HA with the integration"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "integration-test" "Run pytest"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "integration-update" "Pull master from hacs/integration"
-	@echo
-	@echo "Frontend: "
-	@printf "\033[36m  make %-30s\033[0m %s\n" "frontend-init" "Initialize the frontend repository"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "frontend-start" "Start the frontend"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "frontend-build" "Build the frontend"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "frontend-update" "Pull master from hacs/frontend"
-	@echo
-	@echo "Documentation: "
-	@printf "\033[36m  make %-30s\033[0m %s\n" "documentation-init" "Initialize the documentation repository"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "documentation-start" "Start a local server for the documentation"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "documentation-update" "Pull master from hacs/documentation"
-	@echo
-	@echo "Default: "
-	@printf "\033[36m  make %-30s\033[0m %s\n" "default-init" "Initialize the default repository"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "default-add" "Add a new repository to the default HACS list"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "default-remove" "Remove a repository to the default HACS list"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "default-update" "Pull master from hacs/default"
-	@echo
-	@echo "Misc: "
-	@printf "\033[36m  make %-30s\033[0m %s\n" "homeassistant-install" "IInstall the latest dev version of Home Assistant"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "homeassistant-update" "Alias for 'homeassistant-install'"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "development-update" "Pull master from hacs/development"
-	@printf "\033[36m  make %-30s\033[0m %s\n" "clean" "Delete all repositories"
-	@echo
-
-
-# Integration
 integration-init: development-init homeassistant-install
-	@bash script/repository_init integration
-	@bash script/integration_init
+	cd repositories && 	gh repo fork hacs/integration --clone=true --remote=true;
+	cd repositories/integration && \
+		python -m pip --disable-pip-version-check install setuptools wheel && \
+		python -m pip --disable-pip-version-check install -r requirements.txt
 
-integration-start:
-	@bash script/integration_start
-
-integration-test:
-	@bash script/integration_test
-
-integration-update:
-	@bash script/integration_update
+integration-%:
+	@ cd repositories/integration && ${MAKE} --no-print-directory $(subst integration-,,$@)
 
 
-# Frontend
 frontend-init: development-init
-	@bash script/repository_init frontend
-	@bash script/frontend_init
+	@ cd repositories && 	gh repo fork hacs/frontend --clone=true --remote=true;
+	@ make frontend-bootstrap
 
-frontend-start:
-	@bash script/frontend_start
+frontend-%:
+	@ cd repositories/frontend && ${MAKE} --no-print-directory $(subst frontend-,,$@)
 
-frontend-build:
-	@bash script/frontend_build
-
-frontend-update:
-	@bash script/frontend_update
-
-
-# Documentation
 documentation-init: development-init
-	@bash script/repository_init documentation
-	@bash script/documentation_init
+	@ cd repositories && 	gh repo fork hacs/documentation --clone=true --remote=true;
+	@ cd repositories/documentation && yarn;
 
-documentation-start:
-	@bash script/documenation_start
+documentation-%:
+	@ cd repositories/documentation && ${MAKE} --no-print-directory $(subst documentation-,,$@)
 
-documentation-update:
-	@bash script/documentation_update
-
-# Default
 default-init: development-init
-	@bash script/repository_init default
+	@ cd repositories && 	gh repo fork hacs/default --clone=true --remote=true;
+	@ cd repositories/default && ${MAKE} --no-print-directory init
 
-default-add:
-	@bash script/default_add
-
-default-remove:
-	@bash script/default_remove
-
-default-update:
-	@bash script/default_update
+default-%:
+	@ cd repositories/default && ${MAKE} --no-print-directory $(subst default-,,$@)
 
 
-# Misc
-homeassistant-install:
-	@bash script/homeassistant_install;
+##@ Misc:
+homeassistant-install: ## Install the latest dev version of Home Assistant
+	python -m pip --disable-pip-version-check install -U setuptools wheel
+	python -m pip --disable-pip-version-check \
+		install --upgrade git+git://github.com/home-assistant/home-assistant.git@dev;
 
-homeassistant-update: homeassistant-install;
+homeassistant-update: homeassistant-install ## Alias for 'homeassistant-install'
 
 development-init:
-	@bash script/development_init
+	@ if [ -d ".git" ]; then mv .git ..git; fi
 
-development-update:
-	@bash script/development_update
+pull: ## Pull master from hacs/development
+	@ mv ..git .git;
+	@ git pull upstream master;
+	@ mv .git ..git;
 
-clean:
-	rm -rf repositories
-	rm -rf /tmp/config
+
+clean: ## Delete all repositories
+	rm -rf repositories;
+	rm -rf /tmp/config;
+
+gh-cli:
+	apk add go;
+	git clone https://github.com/cli/cli.git /srv/gh-cli;
+	cd /srv/gh-cli && make;
+	mv /srv/gh-cli/bin/gh /usr/local/bin/;
+	@bash -c "if [[ $$(git remote get-url origin) == *'git@github'* ]]; then gh config set git_protocol ssh; fi";
+
+help: ## Shows help message.
+	@printf "\033[1m%s\033[36m %s\033[0m \n" "Development environment for" "HACS";
+
+	@printf "\n\033[1m%s\033[0m\n" Integration;
+	@if test -f repositories/integration/Makefile; then cat repositories/integration/Makefile | awk 'BEGIN {FS = ":.*##";} /^[a-zA-Z_-]+:.*?##/ { printf " \033[36m make integration-%-10s\033[0m %s\n", $$1, $$2 }';	else printf " \033[36m make integration-%-10s\033[0m %s\n" "init" "Initialize the integration repository";fi;
+
+	@printf "\n\033[1m%s\033[0m\n" Frontend;
+	@if test -f repositories/frontend/Makefile; then cat repositories/frontend/Makefile | awk 'BEGIN {FS = ":.*##";} /^[a-zA-Z_-]+:.*?##/ { printf " \033[36m make frontend-%-10s\033[0m %s\n", $$1, $$2 }';	else printf " \033[36m make frontend-%-10s\033[0m %s\n" "init" "Initialize the frontend repository";fi;
+
+	@printf "\n\033[1m%s\033[0m\n" Documentation;
+	@if test -f repositories/documentation/Makefile; then cat repositories/documentation/Makefile | awk 'BEGIN {FS = ":.*##";} /^[a-zA-Z_-]+:.*?##/ { printf " \033[36m make documentation-%-10s\033[0m %s\n", $$1, $$2 }';	else printf " \033[36m make documentation-%-10s\033[0m %s\n" "init" "Initialize the documentation repository";fi;
+
+	@printf "\n\033[1m%s\033[0m\n" Default;
+	@if test -f repositories/default/Makefile; then cat repositories/default/Makefile | awk 'BEGIN {FS = ":.*##";} /^[a-zA-Z_-]+:.*?##/ { printf " \033[36m make default-%-10s\033[0m %s\n", $$1, $$2 }';	else printf " \033[36m make default-%-10s\033[0m %s\n" "init" "Initialize the default repository";fi;
+
+	@awk 'BEGIN {FS = ":.*##";} /^[a-zA-Z_-]+:.*?##/ { printf " \033[36m make %-10s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST);
+	@echo
